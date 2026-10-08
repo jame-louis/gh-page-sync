@@ -10,6 +10,7 @@ directly at ``<dest>/<repo>/index.html``.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -123,7 +124,13 @@ def download(
     *,
     run_id: str | int | None = None,
 ) -> DownloadResult:
-    """Run ``gh run download`` for ``repo`` into ``outdir``; flatten + count."""
+    """Run ``gh run download`` for ``repo`` into ``outdir``; flatten + count.
+
+The download happens in a sibling temp dir and the tree is swapped into place,
+so ``gh`` always extracts into an empty directory. Without this, re-running
+into a non-empty ``outdir`` trips ``gh``'s no-overwrite extractor ("error
+extracting artifact.tar: openat artifact.tar: file exists").
+"""
     gh = _find_gh()
     if gh is None:
         return DownloadResult(
@@ -133,15 +140,27 @@ def download(
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
 
+    tmp = outdir.parent / f".{outdir.name}.tmp-{os.getpid()}"
+    if tmp.exists():
+        shutil.rmtree(tmp)
+    tmp.mkdir()
+
     proc = subprocess.run(
-        build_cmd(repo, artifact, outdir, run_id),
+        build_cmd(repo, artifact, tmp, run_id),
         capture_output=True,
         text=True,
     )
     err = proc.stderr.strip()
     if proc.returncode != 0:
+        shutil.rmtree(tmp, ignore_errors=True)
         detail = err or f"gh run download exited with status {proc.returncode}"
         return DownloadResult(repo, False, error=detail)
 
-    _flatten(outdir)
-    return DownloadResult(repo, True, files=_count_files(outdir), outdir=outdir)
+    _flatten(tmp)
+    files = _count_files(tmp)
+
+    # Atomic-ish swap: replace the live mirror with the freshly fetched tree.
+    if outdir.exists():
+        shutil.rmtree(outdir)
+    tmp.rename(outdir)
+    return DownloadResult(repo, True, files=files, outdir=outdir)

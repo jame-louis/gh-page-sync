@@ -59,23 +59,49 @@ def test_flatten_keeps_multiple_dirs(tmp_path):
 @mock.patch("gh_pages_sync.runner.shutil.which", return_value="/usr/bin/gh")
 @mock.patch("gh_pages_sync.runner.subprocess.run")
 def test_download_extracts_into_outdir(mock_run, mock_which, tmp_path):
-    # gh places the artifact under outdir/<name>/...
-    art = tmp_path / "out" / "site"
-    art.mkdir(parents=True)
-    (art / "index.html").write_text("<h1>hi</h1>")
-    (art / "app.css").write_text("body{}")
+    def seed(cmd, *a, **kw):
+        # gh extracts into the --dir we gave it; land a single artifact folder.
+        d = Path(cmd[cmd.index("--dir") + 1])
+        art = d / "site"
+        art.mkdir(parents=True)
+        (art / "index.html").write_text("<h1>hi</h1>")
+        (art / "app.css").write_text("body{}")
+        return subprocess.CompletedProcess([], 0, stdout="", stderr="")
 
-    mock_run.return_value = subprocess.CompletedProcess([], 0, stdout="", stderr="")
+    mock_run.side_effect = seed
+    out = tmp_path / "out"
 
-    res = runner.download("jame-louis/docker-101", "site", tmp_path / "out")
+    res = runner.download("jame-louis/docker-101", "site", out)
     assert res.ok
     assert res.files == 2
-    # Flattened: files sit directly under out/, not out/site/.
-    assert (tmp_path / "out" / "index.html").exists()
-    assert not (tmp_path / "out" / "site").exists()
-    # The gh binary we claimed to find was used.
+    # Flattened + swapped: files sit directly under out/, not out/site/.
+    assert (out / "index.html").exists()
+    assert not (out / "site").exists()
+    # No temp dir left behind.
+    assert not list(tmp_path.glob(".out.tmp-*"))
     cmd = mock_run.call_args.args[0]
     assert cmd[:3] == ["gh", "run", "download"]
+
+
+@mock.patch("gh_pages_sync.runner.shutil.which", return_value="/usr/bin/gh")
+@mock.patch("gh_pages_sync.runner.subprocess.run")
+def test_download_replaces_stale_outdir(mock_run, mock_which, tmp_path):
+    # A previous run left a stale artifact.tar in outdir. gh would now refuse to
+    # overwrite it; the temp-dir swap must produce a clean tree instead.
+    stale = tmp_path / "out" / "artifact.tar"
+    stale.parent.mkdir(parents=True)
+    stale.write_bytes(b"stale")
+
+    def seed(cmd, *a, **kw):
+        d = Path(cmd[cmd.index("--dir") + 1])
+        (d / "index.html").write_text("<h1>fresh</h1>")
+        return subprocess.CompletedProcess([], 0, stdout="", stderr="")
+
+    mock_run.side_effect = seed
+    res = runner.download("jame-louis/docker-101", "github-pages", tmp_path / "out")
+    assert res.ok
+    assert (tmp_path / "out" / "index.html").exists()
+    assert not (tmp_path / "out" / "artifact.tar").exists()
 
 
 @mock.patch("gh_pages_sync.runner.shutil.which", return_value=None)
