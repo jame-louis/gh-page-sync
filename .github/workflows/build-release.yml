@@ -1,0 +1,52 @@
+name: Build Windows release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install build deps
+        # No runtime deps; only need PyInstaller to freeze the CLI into one exe.
+        run: pip install pyinstaller
+
+      - name: Build standalone executable
+        run: |
+          pyinstaller --onefile --name gh-pages-sync ^
+            --paths src "--hidden-import=gh_pages_sync" ^
+            src/gh_pages_sync/__main__.py
+
+      - name: Assemble distribution folder
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p release/gh-pages-sync
+          cp dist/gh-pages-sync.exe release/gh-pages-sync/
+          cp run-sync.bat install-task.ps1 gh-pages-sync.toml DIST-README.txt release/gh-pages-sync/
+          cd release
+          powershell -NoProfile -Command "Compress-Archive -Path gh-pages-sync -DestinationPath gh-pages-sync-windows-x64.zip -Force"
+
+      - name: Upload build output (run artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: gh-pages-sync-windows-x64
+          path: release/gh-pages-sync-windows-x64.zip
+
+      - name: Attach to GitHub Release (tag builds only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/gh-pages-sync-windows-x64.zip

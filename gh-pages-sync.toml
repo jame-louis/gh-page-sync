@@ -1,0 +1,16 @@
+# gh-pages-sync — repos to sync and where the GitHub Actions output lands.
+# Run `uv run gh-pages-sync sync` to download each repo's build output.
+
+[gh-pages-sync]
+dest = "sites"              # each repo lands in sites/<repo-name>/
+artifact = "github-pages"   # default Pages deployment artifact name (works as-is)
+
+repos = [
+    "jame-louis/docker-101",
+    "jame-louis/python-101",
+]
+
+# Optional per-repo overrides:
+# [gh-pages-sync.repos."jame-louis/docker-101"]
+# artifact = "site"         # use a different artifact name for this repo
+# subdir = "docker-101"     # override the local directory name
