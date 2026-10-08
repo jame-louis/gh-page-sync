@@ -24,9 +24,10 @@ jobs:
         run: pip install pyinstaller
 
       - name: Build standalone executable
+        shell: bash
         run: |
-          pyinstaller --onefile --name gh-pages-sync ^
-            --paths src "--hidden-import=gh_pages_sync" ^
+          pyinstaller --onefile --name gh-pages-sync \
+            --paths src \
             src/gh_pages_sync/__main__.py
 
       - name: Assemble distribution folder
