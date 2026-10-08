@@ -9,6 +9,7 @@ directly at ``<dest>/<repo>/index.html``.
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 import sys
@@ -38,6 +39,39 @@ def _find_gh() -> str | None:
         if local.is_file():
             return str(local)
     return shutil.which("gh")
+
+
+def _pick_success_sha(records: list[dict]) -> str | None:
+    """Return the newest run's commit SHA that reached ``success``."""
+    for r in records:
+        if r.get("conclusion") == "success" and r.get("headSha"):
+            return r["headSha"]
+    return None
+
+
+def latest_success_sha(repo: str, gh: str | None = None) -> str | None:
+    """Commit SHA of the repo's most recent successful workflow run.
+
+    Used to skip re-downloading unchanged builds. Returns ``None`` when it
+    cannot be determined (no gh, no successful run, parse failure), which the
+    caller treats as "unknown -> download anyway" (never silently skip).
+    """
+    gh = gh or _find_gh()
+    if gh is None:
+        return None
+    proc = subprocess.run(
+        [gh, "run", "list", "--repo", repo, "--limit", "50",
+         "--json", "databaseId,headSha,conclusion"],
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        return None
+    try:
+        records = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return None
+    return _pick_success_sha(records)
 
 
 def build_cmd(repo: str, artifact: str, outdir: Path, run_id: str | int | None = None) -> list[str]:

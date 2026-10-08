@@ -99,3 +99,17 @@ def test_find_gh_prefers_local_gh_exe(tmp_path, monkeypatch):
 def test_find_gh_falls_back_to_path():
     with mock.patch("gh_pages_sync.runner.shutil.which", return_value="/usr/bin/gh"):
         assert runner._find_gh() == "/usr/bin/gh"
+
+
+def test_pick_success_sha_returns_newest_success():
+    records = [
+        {"databaseId": 2, "headSha": "abc", "conclusion": "failure"},
+        {"databaseId": 3, "headSha": "def", "conclusion": "success"},
+        {"databaseId": 4, "headSha": "ghi", "conclusion": "success"},
+    ]
+    assert runner._pick_success_sha(records) == "def"
+
+
+def test_pick_success_sha_none_when_no_success():
+    assert runner._pick_success_sha([{"headSha": "x", "conclusion": "failure"}]) is None
+    assert runner._pick_success_sha([]) is None

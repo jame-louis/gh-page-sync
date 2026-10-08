@@ -17,7 +17,10 @@ runner unpacks it. No workflow change is needed. The default artifact name
   or as `gh.exe` beside the tool).
 - Config in `gh-pages-sync.toml` / `[tool.gh-pages-sync]`: `dest`, default
   `artifact`, `repos` list (+ per-repo `artifact`/`subdir` overrides).
-- Always fetch latest artifact (no incremental store) — intentionally simple.
+- Idempotent: before downloading, compare the repo's latest successful run
+  `head_sha` (`gh run list`) to a per-repo state file under `dest/.gh-pages-sync/`
+  and skip when unchanged; `--force` overrides. State is a tiny JSON file, not a
+  full checksum store.
 
 **Distribution:** frozen to a single Windows exe via PyInstaller, built by a
 GitHub Actions `build-release.yml` (Windows job; `v*` tags → Release, also a
